@@ -1,0 +1,359 @@
+---
+title: "ecob2000_lab4_ishika_nawar"
+format: html
+editor: visual
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+1 + 1
+```
+
+You can add options to executable code like this
+
+```{r}
+#| echo: false
+2 * 2
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
+
+```{r}
+setwd("~/Documents/R Projects/ecob2000_lab3_ishika_nawar")
+load("d_HHP2020_241.Rdata")
+attach(d_HHP2020_24)
+d_HHP2020_24
+```
+
+```{r}
+summary(d_HHP2020_24)
+```
+
+```{r}
+prime_age_laborforce_data <- d_HHP2020_24 %>% filter(!is.na(work_kind) &
+                                                       Age >= 25 & Age <= 55)
+```
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(socviz)
+library(AER)
+```
+
+```{r}
+model_1 <- lm(income_midpoint ~ Age + Gender + Education + Race, 
+              data = prime_age_laborforce_data)
+summary(model_1)
+```
+
+```{r}
+library(modelsummary)
+modelsummary(model_1, stars = TRUE, gof_map = c("nobs", "r.squared"))
+```
+
+```{r}
+to_be_predicted1 <- data.frame(Age = 25:55, Gender = "female",
+                               Education = "adv degree",
+                               Race = "Black")
+to_be_predicted1$yhat <- predict(model_1, newdata = to_be_predicted1)
+to_be_predicted1$yhat
+```
+
+```{r}
+to_be_predicted1 <- data.frame(Age = 25:55, Gender = "female",
+                               Education = "some college",
+                               Race = "Black")
+to_be_predicted1$yhat <- predict(model_1, newdata = to_be_predicted1)
+to_be_predicted1$yhat
+```
+
+```{r}
+modelsummary(model_1, stars = TRUE, gof_map = c("nobs", "r.squared"))
+options(scipen = 999)
+summary(model)
+```
+
+```{r}
+library(dplyr)
+library(sandwich); library(lmtest)   # robust SEs
+
+prime_age_laborforce_data <- d_HHP2020_24 %>% filter(!is.na(work_kind) &
+                                                       Age >= 25 & Age <= 55)
+
+# 1. Log income: coefficients become approx. % differences
+prime_age_laborforce_data <- prime_age_laborforce_data %>%
+  filter(income_midpoint > 0) %>%
+  mutate(log_income = log(income_midpoint))
+
+model_2 <- lm(log_income ~ Age + Gender + Education + Race,
+              data = prime_age_laborforce_data)
+
+# 2. Age is probably nonlinear (earnings rise, then flatten)
+model_3 <- lm(log_income ~ Age + I(Age^2) + Gender + Education + Race,
+              data = prime_age_laborforce_data)
+
+# 3. Interactions: does the return to education differ by gender or race?
+model_4 <- lm(log_income ~ Age + I(Age^2) + Gender * Education + Race,
+              data = prime_age_laborforce_data)
+
+# 4. Subsamples
+females <- filter(prime_age_laborforce_data, Gender == "female")
+college <- filter(prime_age_laborforce_data,
+                  Education %in% c("college grad", "adv degree"))
+
+model_f <- lm(log_income ~ Age + I(Age^2) + Education + Race, data = females)
+model_c <- lm(log_income ~ Age + I(Age^2) + Gender + Race,    data = college)
+
+# 5. Robust standard errors (and survey weights if the data has them)
+coeftest(model_3, vcov = vcovHC(model_3, type = "HC1"))
+# model_w <- lm(..., weights = pweight)   # check for a weight variable
+```
+
+```{r}
+model_2
+```
+
+```{r}
+model_3
+```
+
+```{r}
+model_4
+```
+
+```{r}
+model_f
+```
+
+```{r}
+model_c
+```
+
+```{r}
+coeftest(model_2, vcov = vcovHC(model_2, type = "HC1"))
+```
+
+```{r}
+summary(model_3)
+anova(model_2, model_3)
+```
+
+```{r}
+summary(model_4)
+```
+
+```{r}
+summary(model_f)
+```
+
+```{r}
+summary(model_c)
+```
+
+```{r}
+college <- filter(prime_age_laborforce_data,
+                  Education %in% c("college grad", "adv degree"))
+
+model_c <- lm(log_income ~ Age + I(Age^2) + Gender + Education + Race,
+              data = college)
+summary(model_c)
+```
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+```
+
+```{r}
+modelsummary(list("M1 levels" = model_1, "M2 log" = model_2, "M3 log+age²" = model_3,
+                  "Women" = model_f, "College" = model_c),
+             stars = TRUE, vcov = "HC1", coef_omit = "Intercept",
+             gof_map = c("nobs", "adj.r.squared"))
+```
+
+```{r}
+# (a) Why logs: income is right-skewed and bracketed
+p1 <- ggplot(prime_age_laborforce_data, aes(income_midpoint)) + geom_histogram(bins = 30)
+p2 <- ggplot(prime_age_laborforce_data, aes(log_income)) + geom_histogram(bins = 30)
+p1
+p2
+```
+
+```{r}
+### (b) Age profile
+newdat <- data.frame(Age = 25:55, Gender = "female", Education = "adv degree", Race = "Black")
+newdat$M1 <- predict(model_1, newdat)
+newdat$M3 <- exp(predict(model_3, newdat))
+newdat %>% pivot_longer(c(M1, M3), names_to = "model", values_to = "pred") %>%
+  ggplot(aes(Age, pred, color = model)) + geom_line() +
+  labs(y = "Predicted income ($)", title = "Predicted income by age")
+```
+
+```{r}
+### (c) Gender gap by education
+grid <- expand.grid(Age = 40,
+                    Gender = c("male", "female"),
+                    Education = levels(prime_age_laborforce_data$Education),
+                    Race = levels(prime_age_laborforce_data$Race)[1])
+grid$pred <- exp(predict(model_4, grid))
+ggplot(grid, aes(Education, pred, color = Gender, group = Gender)) +
+  geom_point() + geom_line()
+```
+
+```{r}
+### (d) Education coefficients across models
+modelplot(list("All" = model_3, "Women" = model_f, "College" = model_c),
+          coef_omit = "Intercept|Age|Race|Gender")
+```
+
+```{r}
+prime_age_laborforce_data %>%
+  filter(Gender == "female", Race == "Black", Education == "adv degree") %>%
+  mutate(age_bin = cut(Age, c(24, 34, 44, 55))) %>%
+  group_by(age_bin) %>%
+  summarise(avg_income = mean(income_midpoint), n = n())
+```
+
+```{r}
+profiles <- expand.grid(Age = c(25, 35, 45, 55), Gender = "female", Race = "Black",
+                        Education = c("some college", "adv degree"))
+profiles$M1 <- predict(model_1, profiles)
+profiles$M3 <- exp(predict(model_3, profiles))             # median-type prediction
+smear <- mean(exp(residuals(model_3)))                       # Duan smearing factor
+profiles$M3_mean <- profiles$M3 * smear                      # mean-type prediction
+profiles
+```
+
+```{r}
+chk <- data.frame(Age = c(30, 40, 50), Gender = "female", Race = "Black", Education = "adv degree")
+chk$M1        <- predict(model_1, chk)
+chk$M3_median <- exp(predict(model_3, chk))
+chk$M3_mean   <- chk$M3_median * mean(exp(residuals(model_3)))
+chk
+```
+
+```{r}
+library(FNN)
+
+dat <- prime_age_laborforce_data %>%
+  select(income_midpoint, Age, Gender, Education, Race) %>%
+  na.omit() %>%
+  mutate(across(c(Gender, Education, Race), factor))   # keeps existing level order if already factors
+
+X <- model.matrix(~ Age + Gender + Education + Race, data = dat)[, -1]   # dummies, drops intercept
+y <- dat$income_midpoint
+
+age_mean <- mean(X[, "Age"]); age_sd <- sd(X[, "Age"])
+X[, "Age"] <- (X[, "Age"] - age_mean) / age_sd                          # standardize age
+```
+
+```{r}
+
+set.seed(2000)
+train <- sample(nrow(X), 0.8 * nrow(X))
+test  <- sample(setdiff(seq_len(nrow(X)), train), 5000)   # 5,000 test rows keeps it fast
+
+ks <- c(5, 10, 25, 50, 100, 200)
+rmse <- sapply(ks, function(k) {
+  pred <- knn.reg(train = X[train, ], test = X[test, ], y = y[train], k = k)$pred
+  sqrt(mean((y[test] - pred)^2))
+})
+data.frame(k = ks, rmse = rmse)
+best_k <- ks[which.min(rmse)]
+
+plot(ks, rmse, type = "b", xlab = "k", ylab = "Test RMSE")
+```
+
+```{r}
+set.seed(2000)
+train <- sample(nrow(X), 0.8 * nrow(X))
+test  <- sample(setdiff(seq_len(nrow(X)), train), 5000)   # 5,000 test rows keeps it fast
+
+ks <- c(5, 10, 25, 50, 100, 200)
+rmse <- sapply(ks, function(k) {
+  pred <- knn.reg(train = X[train, ], test = X[test, ], y = y[train], k = k)$pred
+  sqrt(mean((y[test] - pred)^2))
+})
+data.frame(k = ks, rmse = rmse)
+best_k <- ks[which.min(rmse)]
+
+plot(ks, rmse, type = "b", xlab = "k", ylab = "Test RMSE")
+```
+
+```{r}
+make_X <- function(Age, Gender, Education, Race) {
+  nd <- data.frame(Age = Age,
+                   Gender = factor(Gender, levels = levels(dat$Gender)),
+                   Education = factor(Education, levels = levels(dat$Education)),
+                   Race = factor(Race, levels = levels(dat$Race)))
+  m <- model.matrix(~ Age + Gender + Education + Race, data = nd,
+                    contrasts.arg = lapply(dat[c("Gender", "Education", "Race")], contrasts, contrasts = FALSE) |> 
+                      (\(x) NULL)())[, -1, drop = FALSE]
+  m[, "Age"] <- (m[, "Age"] - age_mean) / age_sd
+  m
+}
+```
+
+```{r}
+make_X <- function(newdata) {
+  newdata$income_midpoint <- NA
+  for (v in c("Gender", "Education", "Race"))
+    newdata[[v]] <- factor(newdata[[v]], levels = levels(dat[[v]]))
+  both <- rbind(newdata[, names(dat)], dat)
+  m <- model.matrix(~ Age + Gender + Education + Race, data = both)[, -1]
+  m[, "Age"] <- (m[, "Age"] - age_mean) / age_sd
+  m[seq_len(nrow(newdata)), , drop = FALSE]
+}
+
+profiles_knn <- data.frame(Age = c(30, 40, 50), Gender = "female",
+                           Race = "Black", Education = "adv degree")
+
+profiles_knn$knn <- knn.reg(train = X, test = make_X(profiles_knn),
+                            y = y, k = best_k)$pred
+profiles_knn
+```
+
+```{r}
+chk
+```
+
+```{r}
+best_k
+```
+
+```{r}
+data.frame(k = ks, rmse = rmse)
+```
+
+```{r}
+ks <- c(50, 100, 200, 400, 800, 1600)
+rmse <- sapply(ks, function(k) {
+  pred <- knn.reg(train = X[train, ], test = X[test, ], y = y[train], k = k)$pred
+  sqrt(mean((y[test] - pred)^2))
+})
+data.frame(k = ks, rmse = rmse)
+
+# regression benchmark on the same test rows
+fit <- lm(income_midpoint ~ Age + Gender + Education + Race, data = dat[train, ])
+sqrt(mean((dat$income_midpoint[test] - predict(fit, dat[test, ]))^2))
+```
+
+```{r}
+best_k <- 400
+profiles_knn$knn <- knn.reg(train = X, test = make_X(profiles_knn),
+                            y = y, k = best_k)$pred
+profiles_knn
+```
+
+```{r}
+fit <- lm(income_midpoint ~ Age + Gender + Education + Race, data = dat[train, ])
+sqrt(mean((dat$income_midpoint[test] - predict(fit, dat[test, ]))^2))
+```
